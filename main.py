@@ -26,9 +26,20 @@ schema = {
     }
 }
 '''
+import json
+import logging
 from datetime import datetime
 from tab_data_extractor import TabDataExtractor
 from mongodb_handler import MongoDBHandler
+
+logging.basicConfig(
+    level=logging.INFO,  # Set the logging level
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
+
+# Create a logger
+logger = logging.getLogger(__name__)
 
 def schedule_extract():
     pass
@@ -37,16 +48,40 @@ def odds_extract():
     pass
 
 def first_pull_of_day(mongodb: MongoDBHandler, data_extractor: TabDataExtractor, days_collection_name: str):
-    
-    # extract all data
-    data = data_extractor.get_all_data()
-    
-    # reformat data
+
+    formatted_data = {}
 
     # create collection
-    mongodb.create_collection(days_collection_name)
+    # mongodb.create_collection(days_collection_name)
 
-    # post data to collection
+    # extract all data
+    all_data = data_extractor.get_all_data()
+    
+    # reformat data
+    race_count = 0
+    for meeting in all_data["schedule"]["meetings"]:
+        for race in meeting["races"]:
+            formatted_data[race["id"]] = {
+                "_id": race["id"],
+                "meeting_name": meeting["name"],
+                "meeting_number": meeting["number"],
+                "meeting_code": meeting["code"],
+                "race_name": race["name"],
+                "norm_time": race["norm_time"],
+                "race_number": race["number"],                
+                "race_length": race["length"],
+                "race_track": race["track"],
+                "race_weather": race["weather"],
+                "entries": {
+                }
+            }
+            for entry in race["entries"]:
+                formatted_data[race["id"]]["entries"][entry["number"]] = entry
+            race_count += 1
+
+    with open("test.json", "w", encoding="utf-8") as f:
+        json.dump(formatted_data, f, indent=4)
+    # post each race to collection
 
 def regular_pull():
     pass
