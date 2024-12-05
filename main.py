@@ -29,6 +29,7 @@ schema = {
 import json
 import logging
 from datetime import datetime
+from typing import Dict, Optional
 from tab_data_extractor import TabDataExtractor
 from mongodb_handler import MongoDBHandler
 
@@ -47,19 +48,16 @@ def schedule_extract():
 def odds_extract():
     pass
 
-def first_pull_of_day(mongodb: MongoDBHandler, data_extractor: TabDataExtractor, days_collection_name: str):
+def extract_odds_data(odds_data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
+    pass
 
+def extract_results_data(results_data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
+    pass
+
+def extract_schedule_data(schedule_data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
     formatted_data = {}
-
-    # create collection
-    # mongodb.create_collection(days_collection_name)
-
-    # extract all data
-    all_data = data_extractor.get_all_data()
-    
-    # reformat data
     race_count = 0
-    for meeting in all_data["schedule"]["meetings"]:
+    for meeting in schedule_data["meetings"]:
         for race in meeting["races"]:
             formatted_data[race["id"]] = {
                 "_id": race["id"],
@@ -78,10 +76,23 @@ def first_pull_of_day(mongodb: MongoDBHandler, data_extractor: TabDataExtractor,
             for entry in race["entries"]:
                 formatted_data[race["id"]]["entries"][entry["number"]] = entry
             race_count += 1
+            
+    return formatted_data
 
-    with open("test.json", "w", encoding="utf-8") as f:
-        json.dump(formatted_data, f, indent=4)
-    # post each race to collection
+
+def first_pull_of_day(mongodb: MongoDBHandler, data_extractor: TabDataExtractor, days_collection_name: str):
+    # create collection
+    # mongodb.create_collection(days_collection_name)
+
+    # extract all data
+    all_data = data_extractor.get_all_data()
+    
+    # reformat data
+    formatted_data = {}
+    formatted_data = extract_schedule_data(all_data["schedule"])
+    formatted_data = extract_odds_data(all_data["odds"], formatted_data)
+    formatted_data = extract_results_data(all_data["results"], formatted_data)
+    
 
 def regular_pull():
     pass
