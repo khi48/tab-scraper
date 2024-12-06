@@ -44,18 +44,17 @@ logging.basicConfig(
 # Create a logger
 logger = logging.getLogger(__name__)
 
-def schedule_extract():
-    pass
-
-def odds_extract():
-    pass
-
 def extract_odds_data(odds_data: Dict[str, Optional[Dict]], formatted_data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
     logging.info("extracting and reformatting odds data")
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
     for meeting in odds_data["meetings"]:
         for race in meeting["races"]:
+
+            if formatted_data[_id]["got_results"]: # TODO move this check higher
+                logger.info(f"Already got results for race: {_id}")
+                continue
+
             _id = race["id"]
             for entry in race["entries"]:
                 entry_num = str(entry["number"])
@@ -179,7 +178,7 @@ def reformat_collection_format(documents: List[Dict[str, Any]]):
             return id_keyed_documents
         
         except Exception as e:
-            print(f"Error exporting to JSON: {e}")
+            logging.error(f"Error exporting to JSON: {e}")
             return None
         
 
