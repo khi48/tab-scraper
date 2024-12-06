@@ -203,10 +203,10 @@ def regular_pull(mongodb: ModuleNotFoundError, data_extractor: TabDataExtractor,
     for id, data in updated_data.items(): 
         mongodb.replace_document(id, data)
 
-    
-def main():
+def pull_tab_data():
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
+    logger.addHandler(console_handler)
 
     data_extractor = TabDataExtractor()
     mongodb = MongoDBHandler(database_name="tab")
@@ -222,11 +222,11 @@ def main():
     else:
         regular_pull(mongodb, data_extractor, days_collection_name)
 
+    logging.info(f"Done for now")
+
+    
+def main():
+    pull_tab_data()
+
 if __name__ == '__main__':
     main()
-
-
-
-# just dont use arrays in json please
-# mongodb.update_document(3456, {"layer1": {"layer2": {"layer3": {"v1":1, "v2":2}}}})
-# mongodb.append_to_existing_document(3456, {"layer1.layer2.layer4": {"v3":4}})

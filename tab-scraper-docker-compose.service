@@ -7,8 +7,8 @@ After=docker.service
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/home/kieranhitchcock/documents/tab-scraper/
-ExecStart=/usr/bin/docker-compose --env-file .env up -d
-ExecStop=/usr/bin/docker-compose down
+ExecStart=/usr/bin/docker run --network=tab-scraper_backend --name="tab_scraper" tab_scraper
+ExecStop=/usr/bin/docker stop tab_scraper
 TimeoutStartSec=0
 
 [Install]

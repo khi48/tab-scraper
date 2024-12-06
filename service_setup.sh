@@ -1,5 +1,5 @@
 #!/bin/bash
-SERVICE_NAME="docker-compose-mongodb.service"
+SERVICE_NAME=$1
 
 # not sure if this will fail on fresh installation
 sudo systemctl stop $SERVICE_NAME

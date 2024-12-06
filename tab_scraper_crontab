@@ -1,0 +1,2 @@
+0 5-23 * * * root cd /app/ && /usr/local/bin/poetry run python main.py > /proc/1/fd/1 2>&1
+# must need a new line apparently

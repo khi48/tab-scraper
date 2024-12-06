@@ -1,0 +1,7 @@
+*
+!*.py
+!*.sh
+!*.lock
+!*.toml
+!*cron*
+!*.env*
