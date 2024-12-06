@@ -1,0 +1,7 @@
+[MASTER]
+fail-under=9.3
+init-hook='from os import getcwd; import sys; sys.path.append(getcwd())'
+duplicate-code="disable"
+
+[HEADER]
+good-names=db
