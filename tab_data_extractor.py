@@ -87,6 +87,18 @@ class TabDataExtractor:
         data = self.fetch_json_data(url)
         return data
 
+    def get_results_data(self) -> Dict[str, Optional[Dict]]:
+        """
+        Fetches on results endpoint data
+        
+        Returns:
+            Dict[str, Optional[Dict]]: Dictionary containing data from results endpoint
+        """
+        data = {}
+        url = self.base_url + self.endpoints["results"]
+        data = self.fetch_json_data(url)
+        return data
+    
     def combine_data(self, data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
         """
         Combine data from all endpoints into a single dictionary.

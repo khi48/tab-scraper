@@ -40,12 +40,21 @@ To use this in production:
 Remember to never commit sensitive information like connection strings directly in the code. Consider using environment variables or configuration files for such sensitive data.
 """
 import os
-from datetime import datetime, timezone
-from typing import Dict, Any
+import logging
+from datetime import datetime
+from typing import Dict, Any, Optional, List
 from dotenv import load_dotenv
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, OperationFailure
 
+logging.basicConfig(
+    level=logging.INFO,  # Set the logging level
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
+
+# Create a logger
+logger = logging.getLogger(__name__)
 
 class MongoDBHandler:
     def __init__(self, database_name, collection_name=None):
@@ -53,7 +62,8 @@ class MongoDBHandler:
         load_dotenv()
 
         self.database_name = database_name
-        self.collection_name = collection_name
+        self.collection_name = None
+
         # Fill in your MongoDB connection details
         self.client = None
         self.db = None
@@ -74,10 +84,14 @@ class MongoDBHandler:
             return f"mongodb://{username}:{password}@{host}:{port}/?authSource={auth_source}"
         return f"mongodb://{host}:{port}/"
     
+    def set_collection(self, collection_name):
+        self.collection_name = collection_name
+        self.connect_to_collection()
+    
     def connect_to_collection(self):
         if not self.collection_name:
             return None
-        return self.db[self.collection_name]
+        self.collection = self.db[self.collection_name]
     
     def connect(self) -> bool:
         """Establish connection to MongoDB database."""
@@ -85,14 +99,14 @@ class MongoDBHandler:
             connection_string = self._get_connection_string()
             self.client = MongoClient(connection_string)
             self.db = self.client[self.database_name]
-            self.collection = self.connect_to_collection()
+            self.connect_to_collection()
 
             # Test connection
             self.client.server_info()
             return True
         
         except ConnectionFailure as e:
-            print(f"Failed to connect to MongoDB: {e}")
+            logger.info(f"Failed to connect to MongoDB: {e}")
             return False
 
     def close_connection(self):
@@ -119,10 +133,6 @@ class MongoDBHandler:
         # Create the collection
         new_collection = self.db[collection_name]
         
-        # Insert a placeholder document to ensure collection is created immediately
-        # This is optional but ensures the collection exists even if empty
-        new_collection.insert_one({"created_at": datetime.now()})
-        
         return collection_name
     
 
@@ -145,6 +155,33 @@ class MongoDBHandler:
                 return True
         
         return False
+    
+    def get_all_documents(self, limit: Optional[int] = None):
+        """
+        Retrieve all documents from the collection
+        
+        Args:
+            limit (int, optional): Maximum number of documents to retrieve
+            sort_by (str, optional): Field to sort by
+            sort_order (int): 1 for ascending, -1 for descending
+        
+        Returns:
+            List of documents
+        """
+        try:
+            
+            # Retrieve documents
+            if limit:
+                documents = list(self.collection.find().limit(limit))
+            else:
+                documents = list(self.collection.find())
+            
+            logger.info(f"Retrieved {len(documents)} documents")
+            return documents
+        
+        except Exception as e:
+            logger.error(f"Error retrieving documents: {e}")
+            return []
 
     def post_data(self, data: Dict[str, Any]) -> bool:
         """
@@ -156,14 +193,39 @@ class MongoDBHandler:
         Returns:
             bool: True if successful, False otherwise
         """
+        # checking connection
+        if self.collection is None:
+            logger.error("Need to connect to collection")
+            return False
+        
         try:            
             # Insert the data into MongoDB
             result = self.collection.insert_one(data)
-            print(f"Data inserted with ID: {result.inserted_id}")
+            logger.info(f"Data inserted with ID: {result.inserted_id}")
             return True
         except OperationFailure as e:
-            print(f"Failed to insert data: {e}")
+            logger.info(f"Failed to insert data: {e}")
             return False
+        
+    def replace_document(self, document_id, new_document, upsert=False):
+        """
+        Replace a document using replace_one()
+        
+        Args:
+            document_id: ID of the document to replace
+            new_document: New document to replace with
+            upsert: Whether to insert if document doesn't exist
+        """
+        try:            
+            result = self.collection.replace_one(
+                {"_id": document_id},  # Filter
+                new_document,          # Replacement document
+                upsert=upsert           # Insert if not found
+            )
+            return result
+        except Exception as e:
+            logger.info(f"Error replacing document: {e}")
+            return None
         
         
     def append_to_existing_document(
@@ -188,14 +250,14 @@ class MongoDBHandler:
             )
 
             if result.modified_count > 0:
-                print(f"Document {document_id} updated successfully")
+                logger.info(f"Document {document_id} updated successfully")
                 return True
             else:
-                print(f"No document found with ID: {document_id}")
+                logger.info(f"No document found with ID: {document_id}")
                 return False
 
         except OperationFailure as e:
-            print(f"Failed to update data: {e}")
+            logger.info(f"Failed to update data: {e}")
             return False
         
 
@@ -219,14 +281,14 @@ class MongoDBHandler:
             )
 
             if result.modified_count > 0:
-                print(f"Document {document_id} updated successfully")
+                logger.info(f"Document {document_id} updated successfully")
                 return True
             else:
-                print(f"No document found with ID: {document_id}")
+                logger.info(f"No document found with ID: {document_id}")
                 return False
 
         except OperationFailure as e:
-            print(f"Failed to update data: {e}")
+            logger.info(f"Failed to update data: {e}")
             return False
 
 
@@ -251,7 +313,7 @@ def main():
         # Post data to MongoDB
         success = mongo_handler.post_data(sample_data)
         if success:
-            print("Data posted successfully")
+            logger.info("Data posted successfully")
 
         # Example of updating time-sensitive data
         updated_data = {
@@ -263,7 +325,7 @@ def main():
         document_id = "your_document_id"
         success = mongo_handler.update_time_sensitive_data(document_id, updated_data)
         if success:
-            print("Data updated successfully")
+            logger.info("Data updated successfully")
 
     finally:
         # Close the connection
