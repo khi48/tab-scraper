@@ -1,4 +1,4 @@
-#docker build -t tab_scraper 
+#docker build -t tab_scraper .
 #docker run --network=tab-scraper_backend --name="tab_scraper" tab_scraper
 
 FROM python:3.12.6-slim-bookworm

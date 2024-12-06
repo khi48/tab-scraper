@@ -50,12 +50,10 @@ def extract_odds_data(odds_data: Dict[str, Optional[Dict]], formatted_data: Dict
     timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
     for meeting in odds_data["meetings"]:
         for race in meeting["races"]:
-
+            _id = race["id"]
             if formatted_data[_id]["got_results"]: # TODO move this check higher
                 logger.info(f"Already got results for race: {_id}")
                 continue
-
-            _id = race["id"]
             for entry in race["entries"]:
                 entry_num = str(entry["number"])
                 if not formatted_data[_id]["entries"][entry_num]["scratched"]:
