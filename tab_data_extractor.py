@@ -75,6 +75,19 @@ class TabDataExtractor:
             data[endpoint_name] = self.fetch_json_data(url)
         return data
     
+
+    def get_schedule_data(self) -> Dict[str, Optional[Dict]]:
+        """
+        Fetches on schedule endpoint data
+        
+        Returns:
+            Dict[str, Optional[Dict]]: Dictionary containing data from schedule endpoint
+        """
+        data = {}
+        url = self.base_url + self.endpoints["schedule"]
+        data = self.fetch_json_data(url)
+        return data
+    
     def get_odds_data(self) -> Dict[str, Optional[Dict]]:
         """
         Fetches on odds endpoint data

@@ -30,7 +30,7 @@ import sys
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Optional, List, Any
 from tab_data_extractor import TabDataExtractor
 from mongodb_handler import MongoDBHandler
@@ -43,6 +43,8 @@ logging.basicConfig(
 
 # Create a logger
 logger = logging.getLogger(__name__)
+
+DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
 
 def extract_odds_data(odds_data: Dict[str, Optional[Dict]], formatted_data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
     logging.info("extracting and reformatting odds data")
@@ -70,6 +72,15 @@ def extract_results_data(results_data: Dict[str, Optional[Dict]], formatted_data
                 logger.info(f"No results for race {_id}, skipping")
                 continue
 
+            race_time = formatted_data[_id]["norm"]
+            race_time = datetime.strptime(race_time, DATETIME_FORMAT)
+            current_time = datetime.now()
+
+            if current_time < (race_time - timedelta(hours=2)):
+                logger.info("Race too far in future, no point collecting now")
+                continue
+
+
             if formatted_data[_id]["got_results"]: # TODO move this check higher
                 logger.info(f"Already got results for race: {_id}")
                 continue
@@ -83,7 +94,8 @@ def extract_results_data(results_data: Dict[str, Optional[Dict]], formatted_data
                 entry_results = {
                     "results_distance": placed["distance"],
                     "results_favouritism": placed["favouritism"],
-                    "results_rank": placed["rank"]
+                    "results_rank": placed["rank"],
+                    "results_plc": True
                 }
                 formatted_data[_id]["entries"][entry_num].update(entry_results)
 
@@ -117,12 +129,13 @@ def extract_schedule_data(schedule_data: Dict[str, Optional[Dict]]) -> Dict[str,
                 "race_track": race["track"],
                 "race_weather": race["weather"],
                 "got_results": False,
-                "time_schedule_pulled": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "time_schedule_pulled": datetime.now().strftime(DATETIME_FORMAT),
                 "entries": {
                 }
             }
             for entry in race["entries"]:
                 formatted_data[race["id"]]["entries"][str(entry["number"])] = entry
+                formatted_data[race["id"]]["entries"][str(entry["number"])]["results_plc"] = False
                 formatted_data[race["id"]]["entries"][str(entry["number"])]["odds"] = {}
             race_count += 1
             
@@ -200,6 +213,9 @@ def regular_pull(mongodb: ModuleNotFoundError, data_extractor: TabDataExtractor,
     for id, data in updated_data.items(): 
         mongodb.replace_document(id, data)
 
+def convert_date(date_string):
+    return '_' + date_string.replace('-', '')
+
 def pull_tab_data():
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
@@ -209,7 +225,9 @@ def pull_tab_data():
     mongodb = MongoDBHandler(database_name="tab")
     mongodb.connect()
 
-    days_collection_name = datetime.now().strftime('_%Y%m%d')
+    # days_collection_name = datetime.now().strftime('_%Y%m%d')
+    schedule_date = data_extractor.get_schedule_data()["date"]
+    days_collection_name = convert_date(schedule_date)
 
     first_pull_completed = mongodb.check_collection_in_db(days_collection_name)
     logging.info(f"Day exists in db: {first_pull_completed}")
