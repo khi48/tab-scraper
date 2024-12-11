@@ -1,2 +1,7 @@
-*/5 * * * * root cd /app/ && /usr/local/bin/poetry run python main.py > /proc/1/fd/1 2>&1
+* * * * * root cd /app/ && /usr/local/bin/poetry run python main.py > /proc/1/fd/1 2>&1
+* * * * * root sleep 10; cd /app/ && /usr/local/bin/poetry run python main.py > /proc/1/fd/1 2>&1
+* * * * * root sleep 20; cd /app/ && /usr/local/bin/poetry run python main.py > /proc/1/fd/1 2>&1
+* * * * * root sleep 30; cd /app/ && /usr/local/bin/poetry run python main.py > /proc/1/fd/1 2>&1
+* * * * * root sleep 40; cd /app/ && /usr/local/bin/poetry run python main.py > /proc/1/fd/1 2>&1
+* * * * * root sleep 50; cd /app/ && /usr/local/bin/poetry run python main.py > /proc/1/fd/1 2>&1
 # must need a new line apparently

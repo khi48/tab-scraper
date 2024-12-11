@@ -1,61 +1,60 @@
-'''
-Extracts data from TAB site and puts into mongoDB
+"""
+A contintously running script
 
-Every day has a new collection with naming: _yyyymmmdd
-
-Each race is then broken down into it's own document with each _id being the race_id
-
-
-MongoDB JSON Schema:
-
-schema = {
-    "_id": "string",
-    "meeting_name": "string",
-    "race_name": "string",
-    "race_number": "interger",
-    "race_norm_time": "string",
-    "race_length": "string",
-    "entries": {
-        entry_number: {
-            # all entry info
-            odds: {
-                time : {
-                }
-            }
-        }
-    }
-}
-'''
+Author: k.hitchcock
+Date: 2024-12-11
+"""
 import sys
 import json
-import logging
 import time
-from datetime import datetime, timedelta
+import logging
+import time as timer
+from datetime import datetime, timedelta, date, time
 from typing import Dict, Optional, List, Any
 from tab_data_extractor import TabDataExtractor
 from mongodb_handler import MongoDBHandler
 
+DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+DATE_FORMAT = '%Y-%m-%d'
+
 logging.basicConfig(
     level=logging.INFO,  # Set the logging level
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
+    datefmt=DATETIME_FORMAT,
 )
 
 # Create a logger
 logger = logging.getLogger(__name__)
 
-DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+def check_within_time_bounds(start_time, end_time):
+    current_time = datetime.now().time()
+    if start_time <= current_time <= end_time:
+        return True
+    return False
 
-def extract_odds_data(odds_data: Dict[str, Optional[Dict]], formatted_data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
-    logging.info("extracting and reformatting odds data")
+def convert_date_to_collection_format(date_string):
+    return '_' + date_string.replace('-', '')
+
+
+def update_odds_data_local(odds_data: Dict[str, Optional[Dict]], formatted_data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
+    # logging.info("extracting and reformatting odds data")
     now = datetime.now()
-    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = now.strftime(DATETIME_FORMAT)
     for meeting in odds_data["meetings"]:
         for race in meeting["races"]:
             _id = race["id"]
-            if formatted_data[_id]["got_results"]: # TODO move this check higher
-                logger.info(f"Already got results for race: {_id}")
+
+            race_time = formatted_data[_id]["norm_time"]
+            race_time = datetime.strptime(race_time, DATETIME_FORMAT)
+            current_time = datetime.now()
+            
+            # ignore if the data isn't near race time
+            # HACK: there is a slight assumption that the race would have started 5 minutes after norm time
+            if current_time < (race_time - timedelta(minutes=5)) or current_time > (race_time + timedelta(minutes=5)):
                 continue
+
+            logger.info(f"Updating race: {_id}")
+
             for entry in race["entries"]:
                 entry_num = str(entry["number"])
                 if not formatted_data[_id]["entries"][entry_num]["scratched"]:
@@ -63,30 +62,22 @@ def extract_odds_data(odds_data: Dict[str, Optional[Dict]], formatted_data: Dict
 
     return formatted_data
 
-def extract_results_data(results_data: Dict[str, Optional[Dict]], formatted_data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
-    logging.info("extracting and reformatting results data")
+
+def update_results_data_local(results_data: Dict[str, Optional[Dict]], formatted_data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
+    # logging.info("extracting and reformatting results data")
     for meeting in results_data["meetings"]:
         for race in meeting["races"]:
             _id = race["id"]
+
+            # the results page will be pretty empty at the start of the day... 
+            # tbh only need to pull the results page once in a day
             if not _id:
-                logger.info(f"No results for race {_id}, skipping")
                 continue
-
-            race_time = formatted_data[_id]["norm"]
-            race_time = datetime.strptime(race_time, DATETIME_FORMAT)
-            current_time = datetime.now()
-
-            if current_time < (race_time - timedelta(hours=2)):
-                logger.info("Race too far in future, no point collecting now")
-                continue
-
 
             if formatted_data[_id]["got_results"]: # TODO move this check higher
-                logger.info(f"Already got results for race: {_id}")
                 continue
             
             if race["placings"] == []:
-                logger.info(f"No placings for race {_id}")
                 continue
             
             for placed in race["placings"]:
@@ -106,13 +97,63 @@ def extract_results_data(results_data: Dict[str, Optional[Dict]], formatted_data
                     "results_rank": also_ran["finish_position"]
                 }
                 formatted_data[_id]["entries"][entry_num].update(entry_results)
-            logger.info(f"Updated results for race: {_id}")
+
             formatted_data[_id]["got_results"] = True
 
     return formatted_data
+    
+def reformat_collection_format(documents: List[Dict[str, Any]]):
+        """
+        Reformats documents with _id as key
+        
+        Args:
+            documents (list): List of documents to reformat
+        """
+        try:
+            # Create a dictionary with _id as key
+            id_keyed_documents = {}
+            for doc in documents:
+
+                # Convert ObjectId to string for JSON serialization
+                doc_id = str(doc['_id'])
+                
+                # Add to dictionary
+                id_keyed_documents[doc_id] = doc
+            return id_keyed_documents
+        
+        except Exception as e:
+            # logging.error(f"Error exporting to JSON: {e}")
+            return None
+        
+
+def extract_and_update_results(mongodb: MongoDBHandler, data_extractor: TabDataExtractor, collection_name: str):
+    results_data = data_extractor.get_results_data()
+
+    mongodb.set_collection(collection_name)
+    existing_data = mongodb.get_all_documents()
+    formatted_data = reformat_collection_format(existing_data)
+
+    updated_data = update_results_data_local(results_data, formatted_data)
+
+    for id, data in updated_data.items(): 
+        mongodb.replace_document(id, data)
+
+
+def extract_and_update_odds(mongodb: MongoDBHandler, data_extractor: TabDataExtractor, collection_name: str):
+
+    odds_data = data_extractor.get_odds_data()
+
+    mongodb.set_collection(collection_name)
+    existing_data = mongodb.get_all_documents()
+    formatted_data = reformat_collection_format(existing_data)
+
+    updated_data = update_odds_data_local(odds_data, formatted_data)
+
+    for id, data in updated_data.items(): 
+        mongodb.replace_document(id, data)
 
 def extract_schedule_data(schedule_data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
-    logging.info("extracting and reformatting schedule data")
+    # logging.info("extracting and reformatting schedule data")
     formatted_data = {}
     race_count = 0
     for meeting in schedule_data["meetings"]:
@@ -141,105 +182,51 @@ def extract_schedule_data(schedule_data: Dict[str, Optional[Dict]]) -> Dict[str,
             
     return formatted_data
 
+def pull_schedule_and_create_collection(mongodb: MongoDBHandler, data_extractor: TabDataExtractor, collection_name: str):
+    mongodb.create_collection(collection_name)
 
-def first_pull_of_day(mongodb: MongoDBHandler, data_extractor: TabDataExtractor, days_collection_name: str):
+    schedule_date = data_extractor.get_schedule_data()
+    formatted_data = extract_schedule_data(schedule_date)
 
-    logging.info("Running first pull of the day")
-
-    # extract all data
-    logging.info("Pulling information")
-    all_data = data_extractor.get_all_data()
-    
-    # reformat data
-    formatted_data = {}
-    formatted_data = extract_schedule_data(all_data["schedule"])
-    formatted_data = extract_odds_data(all_data["odds"], formatted_data)
-    formatted_data = extract_results_data(all_data["results"], formatted_data)
-
-    with open('output.json', 'w') as f:
-        json.dump(formatted_data, f, indent=4)
-
-    # create collection
-    logging.info("Creating collection db")
-    mongodb.create_collection(days_collection_name)
-
-    # push data
-    logging.info(f"Posting to {days_collection_name} collection")
-    mongodb.set_collection(days_collection_name)
+    mongodb.set_collection(collection_name)
     for _, data in formatted_data.items(): 
         mongodb.post_data(data)
-    
-def reformat_collection_format(documents: List[Dict[str, Any]]):
-        """
-        Reformats documents with _id as key
-        
-        Args:
-            documents (list): List of documents to reformat
-        """
-        try:
-            # Create a dictionary with _id as key
-            id_keyed_documents = {}
-            for doc in documents:
 
-                # Convert ObjectId to string for JSON serialization
-                doc_id = str(doc['_id'])
-                
-                # Add to dictionary
-                id_keyed_documents[doc_id] = doc
-            return id_keyed_documents
-        
-        except Exception as e:
-            logging.error(f"Error exporting to JSON: {e}")
-            return None
-        
 
-# HACK: this whole function is hacky. Rather than pulling all the data from db and  updating that,
-# could just pull data from TAB and push it to individual parts... oh well
-def regular_pull(mongodb: ModuleNotFoundError, data_extractor: TabDataExtractor, days_collection_name: str):
-    mongodb.set_collection(days_collection_name)
-
-    logging.info(f"Pulling all documents from {days_collection_name}")
-    existing_data = mongodb.get_all_documents()
-    existing_data = reformat_collection_format(existing_data)
-
-    odds_data = data_extractor.get_odds_data()
-    results_data = data_extractor.get_results_data()
-    # TODO: Don't be lazy and check if we already have results on some of them, don't need to go back through and look
-    updated_data = extract_odds_data(odds_data, existing_data)
-    updated_data = extract_results_data(results_data, updated_data)
-
-    # HACK: Literally just reposting overtop of existing data rather than updating subsection
-    logging.info(f"Updating documents in {days_collection_name} collection")
-    for id, data in updated_data.items(): 
-        mongodb.replace_document(id, data)
-
-def convert_date(date_string):
-    return '_' + date_string.replace('-', '')
-
+# making big assumption around things changing at 1:30 
 def pull_tab_data():
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    logger.addHandler(console_handler)
-
+    start_time = timer.time()
     data_extractor = TabDataExtractor()
     mongodb = MongoDBHandler(database_name="tab")
     mongodb.connect()
 
-    # days_collection_name = datetime.now().strftime('_%Y%m%d')
-    schedule_date = data_extractor.get_schedule_data()["date"]
-    days_collection_name = convert_date(schedule_date)
+    current_date = convert_date_to_collection_format(date.today().strftime(DATE_FORMAT))
 
-    first_pull_completed = mongodb.check_collection_in_db(days_collection_name)
-    logging.info(f"Day exists in db: {first_pull_completed}")
+    if check_within_time_bounds(time(1, 29), time(5, 00)):
+        date_in_db = mongodb.check_collection_in_db(current_date)
+        if not date_in_db:
+            schedule_date = convert_date_to_collection_format(data_extractor.get_schedule_data()["date"])
+            if schedule_date == current_date:
+                logger.info("updating schedule")
+                pull_schedule_and_create_collection(mongodb, data_extractor, schedule_date)
+            else:
+                current_date = schedule_date
 
-    if not first_pull_completed:
-        first_pull_of_day(mongodb, data_extractor, days_collection_name)
-    else:
-        regular_pull(mongodb, data_extractor, days_collection_name)
+    logger.info("updating odds")
+    extract_and_update_odds(mongodb, data_extractor, current_date)
+
+    # pull results
+    # may not get all of the races in if they are run past 1:30
+    if check_within_time_bounds(time(1, 25), time(1, 28)):
+        #TODO add check to see if results have been pulled before
+        # document = collection.find_one()
+        logger.info("updating results")
+        extract_and_update_results(mongodb, data_extractor, current_date)
 
     logging.info(f"Done for now")
+    end_time = timer.time()
+    logger.info(f"Execution time: {end_time - start_time} seconds")
 
-    
 def main():
     pull_tab_data()
 
