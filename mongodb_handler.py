@@ -144,10 +144,7 @@ class MongoDBHandler:
         dict: A dictionary with collection names as keys and boolean 
             validation results as values
         """
-        
-        # Get list of all collection names in the database
-        collection_names = self.db.list_collection_names()
-        
+        collection_names = self.get_all_collections()
         # Validate each collection name
         for collection_name in collection_names:
             # Check if collection name matches current date format
@@ -155,6 +152,11 @@ class MongoDBHandler:
                 return True
         
         return False
+    
+    def get_all_collections(self):
+        # Get list of all collection names in the database
+        return self.db.list_collection_names()
+
     
     def get_all_documents(self, limit: Optional[int] = None):
         """

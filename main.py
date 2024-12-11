@@ -192,17 +192,32 @@ def pull_schedule_and_create_collection(mongodb: MongoDBHandler, data_extractor:
     for _, data in formatted_data.items(): 
         mongodb.post_data(data)
 
+def find_latest_collection(mongodb: MongoDBHandler) -> str:
+    collections = mongodb.get_all_collections()
+    latest_collection = max(collections)
+    return latest_collection
+
+def find_first_and_final_race_of_day(mongodb: MongoDBHandler, latest_collection):
+    mongodb.set_collection(latest_collection)
+    d = mongodb.get_all_documents()
+
+    time_list = []
+    for race in d:
+        time_list.append(race["norm_time"])
+
+    return max(time_list)
+
 
 # making big assumption around things changing at 1:30 
+# things will change potentially around the final race time, but have evidence that 
+# doesn't always happen (transition from 9th to 10th dec)
 def pull_tab_data():
     start_time = timer.time()
     data_extractor = TabDataExtractor()
     mongodb = MongoDBHandler(database_name="tab")
     mongodb.connect()
 
-    current_date = convert_date_to_collection_format(date.today().strftime(DATE_FORMAT))
-
-    if check_within_time_bounds(time(1, 29), time(5, 00)):
+    if check_within_time_bounds(time(0, 00), time(5, 00)):
         date_in_db = mongodb.check_collection_in_db(current_date)
         if not date_in_db:
             schedule_date = convert_date_to_collection_format(data_extractor.get_schedule_data()["date"])
