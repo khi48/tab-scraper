@@ -216,6 +216,8 @@ def pull_tab_data():
     data_extractor = TabDataExtractor()
     mongodb = MongoDBHandler(database_name="tab")
     mongodb.connect()
+    current_date = convert_date_to_collection_format(date.today().strftime(DATE_FORMAT))
+    
 
     if check_within_time_bounds(time(0, 00), time(5, 00)):
         date_in_db = mongodb.check_collection_in_db(current_date)
@@ -229,10 +231,11 @@ def pull_tab_data():
 
     logger.info("updating odds")
     extract_and_update_odds(mongodb, data_extractor, current_date)
-
+    
     # pull results
-    # may not get all of the races in if they are run past 1:30
-    if check_within_time_bounds(time(1, 25), time(1, 28)):
+    # lets just pull every hour I guess
+    now = datetime.now()
+    if now.minute == 0 and 0 <= now.second <= 10:
         #TODO add check to see if results have been pulled before
         # document = collection.find_one()
         logger.info("updating results")
