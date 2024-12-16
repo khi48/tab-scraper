@@ -38,11 +38,17 @@ def convert_date_to_collection_format(date_string):
 
 def update_odds_data_local(odds_data: Dict[str, Optional[Dict]], formatted_data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
     # logging.info("extracting and reformatting odds data")
+    need_update_schedule = False
     now = datetime.now()
     timestamp = now.strftime(DATETIME_FORMAT)
     for meeting in odds_data["meetings"]:
         for race in meeting["races"]:
             _id = race["id"]
+            
+            if _id and _id not in formatted_data.keys():
+                logger.info(f"Can't find id: {_id} in mongodb data, did schedule miss it?")
+                need_update_schedule = True
+                continue 
 
             race_time = formatted_data[_id]["norm_time"]
             race_time = datetime.strptime(race_time, DATETIME_FORMAT)
@@ -60,7 +66,7 @@ def update_odds_data_local(odds_data: Dict[str, Optional[Dict]], formatted_data:
                 if not formatted_data[_id]["entries"][entry_num]["scratched"]:
                     formatted_data[_id]["entries"][entry_num]["odds"][timestamp] = entry 
 
-    return formatted_data
+    return formatted_data, need_update_schedule
 
 
 def update_results_data_local(results_data: Dict[str, Optional[Dict]], formatted_data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
@@ -139,7 +145,7 @@ def extract_and_update_results(mongodb: MongoDBHandler, data_extractor: TabDataE
         mongodb.replace_document(id, data)
 
 
-def extract_and_update_odds(mongodb: MongoDBHandler, data_extractor: TabDataExtractor, collection_name: str):
+def extract_and_update_odds(mongodb: MongoDBHandler, data_extractor: TabDataExtractor, collection_name: str) -> bool:
 
     odds_data = data_extractor.get_odds_data()
 
@@ -147,10 +153,12 @@ def extract_and_update_odds(mongodb: MongoDBHandler, data_extractor: TabDataExtr
     existing_data = mongodb.get_all_documents()
     formatted_data = reformat_collection_format(existing_data)
 
-    updated_data = update_odds_data_local(odds_data, formatted_data)
+    updated_data, need_update_schedule = update_odds_data_local(odds_data, formatted_data)
 
     for id, data in updated_data.items(): 
         mongodb.replace_document(id, data)
+
+    return need_update_schedule
 
 def extract_schedule_data(schedule_data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
     # logging.info("extracting and reformatting schedule data")
@@ -181,6 +189,18 @@ def extract_schedule_data(schedule_data: Dict[str, Optional[Dict]]) -> Dict[str,
             race_count += 1
             
     return formatted_data
+
+def update_schedule_missing_races(mongodb: MongoDBHandler, data_extractor: TabDataExtractor, collection_name: str):
+    schedule_date = data_extractor.get_schedule_data()
+    formatted_data = extract_schedule_data(schedule_date)
+
+    mongodb.set_collection(collection_name)
+    d = mongodb.get_all_documents()
+    d = reformat_collection_format(d)
+
+    for _id, data in formatted_data.items(): 
+        if _id not in d.keys():
+            mongodb.post_data(data)
 
 def pull_schedule_and_create_collection(mongodb: MongoDBHandler, data_extractor: TabDataExtractor, collection_name: str):
     mongodb.create_collection(collection_name)
@@ -216,22 +236,29 @@ def pull_tab_data():
     data_extractor = TabDataExtractor()
     mongodb = MongoDBHandler(database_name="tab")
     mongodb.connect()
-    current_date = convert_date_to_collection_format(date.today().strftime(DATE_FORMAT))
-    
+    collection_name = convert_date_to_collection_format(date.today().strftime(DATE_FORMAT))
+    logger.info(f"Current date: {collection_name}")
 
     if check_within_time_bounds(time(0, 00), time(5, 00)):
-        date_in_db = mongodb.check_collection_in_db(current_date)
+        logger.info("within schedule changing time bounds")
+        date_in_db = mongodb.check_collection_in_db(collection_name)
         if not date_in_db:
             schedule_date = convert_date_to_collection_format(data_extractor.get_schedule_data()["date"])
-            if schedule_date == current_date:
+            if schedule_date == collection_name:
                 logger.info("updating schedule")
                 pull_schedule_and_create_collection(mongodb, data_extractor, schedule_date)
             else:
-                current_date = schedule_date
+                collection_name = schedule_date
+
+    logger.info(f"Current collection: {collection_name}")
 
     logger.info("updating odds")
-    extract_and_update_odds(mongodb, data_extractor, current_date)
-    
+    update_schedule = extract_and_update_odds(mongodb, data_extractor, collection_name)
+
+    if update_schedule:
+        logger.info("Updating schedule with missing races")
+        update_schedule_missing_races(mongodb, data_extractor, collection_name)
+
     # pull results
     # lets just pull every hour I guess
     now = datetime.now()
@@ -239,7 +266,7 @@ def pull_tab_data():
         #TODO add check to see if results have been pulled before
         # document = collection.find_one()
         logger.info("updating results")
-        extract_and_update_results(mongodb, data_extractor, current_date)
+        extract_and_update_results(mongodb, data_extractor, collection_name)
 
     logging.info(f"Done for now")
     end_time = timer.time()
