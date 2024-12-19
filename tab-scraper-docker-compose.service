@@ -7,6 +7,7 @@ After=docker.service
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/home/kieranhitchcock/documents/tab-scraper/
+ExecStartPre=-/usr/bin/docker rm tab_scraper
 ExecStart=/usr/bin/docker run --network=tab-scraper_backend --name="tab_scraper" -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro tab_scraper
 ExecStop=/usr/bin/docker stop tab_scraper && /usr/bin/docker rm tab_scraper
 TimeoutStartSec=0

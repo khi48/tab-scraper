@@ -7,7 +7,7 @@ Date: 2024-12-17
 import os
 import sys
 import inspect
-from datetime import date, timedelta
+from datetime import datetime, date, timedelta
 
 #HACK: TODO: make this pip installable
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
@@ -50,11 +50,23 @@ def pull_schedule():
     return all_races
 
 def check_races(races, seconds_till_race):
-    for race in races
+    for race in races:
+        race_time = race["norm_time"]
+        race_time = datetime.strptime(race_time, DATETIME_FORMAT)
+        current_time = datetime.now()
+
+        # check within 10s of race
+        if not(current_time > (race_time - timedelta(seconds=10)) and current_time < race_time):
+            continue
+
+        # get odds
 
 def main():
     races = pull_schedule()
-    race, race_soon = next_race(races, 10)
+    tab_extractor = TabDataExtractor()
+    odds_data = tab_extractor.get_odds_data()
+
+    race, race_soon = check_races(races, 10)
     if not race_soon:
         return
     
