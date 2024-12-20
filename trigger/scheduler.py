@@ -1,19 +1,12 @@
-import os
-import sys
 import time
 import json
-import inspect
 import logging
 import schedule
 from datetime import datetime, timedelta
 
-
-#HACK: TODO: make this pip installable
-currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-parentdir = os.path.dirname(currentdir)
-sys.path.insert(0, parentdir) 
-
+from filter import Filter
 from tab_data_extractor import TabDataExtractor
+#TODO: need to get meeting name
 
 DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
 
@@ -39,14 +32,7 @@ class OneTimeScheduler:
         self.last_file_check = datetime.now()
         self.file_check_interval = 600  # Check for schedule updates every 600 seconds
         self.tab_data_extractor = TabDataExtractor()
-        
-    # def load_schedule(self):
-    #     """Load schedule from JSON file."""
-    #     try:
-    #         with open(self.schedule_file, 'r') as f:
-    #             return json.load(f)
-    #     except FileNotFoundError:
-    #         return {}
+        self.filter = Filter()
             
     def should_check_schedule(self):
         """Determine if it's time to check for schedule updates."""
@@ -90,6 +76,8 @@ class OneTimeScheduler:
     
     def update_schedule(self):
         """Update the schedule with new trigger times."""
+
+        self.logger.info("Updating Schedule")
         # Clear existing jobs that haven't run yet
         schedule.clear()
         self.current_jobs.clear()
@@ -107,8 +95,6 @@ class OneTimeScheduler:
             race_id = race_info["id"]
             if self.is_future_time(trigger_date_time):
                 trigger_time = trigger_date_time.split(" ")[-1] # HACK just extracting the time
-                self.logger.info(f"trigger time: {trigger_time}")
-
                 job = schedule.every().day.at(trigger_time).do(
                     self.run_task, trigger_time, race_id
                 )
@@ -117,13 +103,17 @@ class OneTimeScheduler:
                     
     def run_task(self, trigger_time, race_id):
         """Execute the task and remove it from schedule after completion."""
-        self.logger.info(f"Running task at {trigger_time}")
+        self.logger.info(f"Running task")
 
         # Add your task logic here
-        self.logger.info(f"race_id: {race_id}")
+        self.logger.info(f"analysing race_id: {race_id}")
         odds = self.pull_race_odds(race_id)
         with open(self.debug_file_name, 'w') as f:
             json.dump(odds, f, indent=4)
+
+        race_good = self.filter.filter_odds(odds)
+        if race_good:
+            self.logger.info(f"bet on")
 
         # Remove the job after it runs or if the date has passed
         job_key = f"{race_id}_{trigger_time}"
@@ -140,8 +130,8 @@ class OneTimeScheduler:
                 self.update_schedule()
 
             if not self.current_jobs:
-                self.logger.info("No tasks to schedule. Exiting.")
-                return
+                self.logger.info("No tasks to schedule. Having long wait for new schedule to arrive")
+                time.sleep(self.file_check_interval/2)
             
             schedule.run_pending()
             time.sleep(1)

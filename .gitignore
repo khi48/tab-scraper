@@ -166,3 +166,5 @@ mongo_tab_data/
 
 output*/
 analysis/
+
+trigger/filter.py

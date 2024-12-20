@@ -9,7 +9,7 @@ sudo systemctl stop $SERVICE_NAME
 sudo systemctl disable $SERVICE_NAME
 sudo rm /etc/systemd/system/$SERVICE_NAME
 
-docker build -t tab_scraper .
+docker build -t tab_scraper -f tab-scraper-dockerfile .
 
 echo "Starting service: $SERVICE_NAME"
 sudo cp ./$SERVICE_NAME /etc/systemd/system/
