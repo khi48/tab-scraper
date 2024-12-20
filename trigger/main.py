@@ -56,7 +56,7 @@ def check_races(races, seconds_till_race):
         current_time = datetime.now()
 
         # check within 10s of race
-        if not(current_time > (race_time - timedelta(seconds=10)) and current_time < race_time):
+        if not(current_time > (race_time - timedelta(seconds=seconds_till_race)) and current_time < race_time):
             continue
 
         # get odds
