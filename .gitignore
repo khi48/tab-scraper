@@ -168,3 +168,5 @@ output*/
 analysis/
 
 trigger/filter.py
+Cookies
+chromedriver

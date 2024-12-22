@@ -2,6 +2,7 @@ import time
 import json
 import logging
 import schedule
+from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta
 
 from filter import Filter
@@ -9,6 +10,12 @@ from tab_data_extractor import TabDataExtractor
 #TODO: need to get meeting name
 
 DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+
+@dataclass
+class TimingSchedule:
+    norm_time: str
+    meeting_name: str
+    id: str
 
 class OneTimeScheduler:
     def __init__(self, log_level=logging.INFO):
@@ -59,11 +66,13 @@ class OneTimeScheduler:
                 race_time = race_time.strftime(DATETIME_FORMAT)
 
                 timing_schedule.append(
-                        {
-                            "norm_time": race_time, 
-                            "id": race["id"]
-                        }  
+                    TimingSchedule(
+                            norm_time=race_time,
+                            meeting_name=meeting["name"],
+                            id=race["id"]
+                        )
                     )
+        self.logger.info(f"schedule_len {len(timing_schedule)}")
         return timing_schedule
     
     def pull_race_odds(self, race_id):
@@ -85,38 +94,40 @@ class OneTimeScheduler:
         # Load new schedule
         races = self.pull_and_reformat_tab_scheule()
 
-        with open(self.schedule_file_name, 'w') as f:
-            json.dump(races, f, indent=4)
+        # with open(self.schedule_file_name, 'w') as f:
+        #     json.dump(races, f, indent=4)
         
         # Schedule each task for specified dates
         for race_info in races:
             # Only schedule if the time hasn't passed yet
-            trigger_date_time = race_info["norm_time"]
-            race_id = race_info["id"]
+            trigger_date_time = race_info.norm_time
+            race_id = race_info.id
+            meeting_name = race_info.meeting_name
             if self.is_future_time(trigger_date_time):
                 trigger_time = trigger_date_time.split(" ")[-1] # HACK just extracting the time
                 job = schedule.every().day.at(trigger_time).do(
-                    self.run_task, trigger_time, race_id
+                    self.run_task, race_id, meeting_name, trigger_time, 
                 )
-                job_key = f"{race_id}_{trigger_time}"
+                job_key = f"{race_id}_{meeting_name}_{trigger_time}"
+                self.logger.info(job_key)
                 self.current_jobs[job_key] = job
                     
-    def run_task(self, trigger_time, race_id):
+    def run_task(self, race_id, meeting_name, trigger_time):
         """Execute the task and remove it from schedule after completion."""
         self.logger.info(f"Running task")
 
         # Add your task logic here
         self.logger.info(f"analysing race_id: {race_id}")
         odds = self.pull_race_odds(race_id)
-        with open(self.debug_file_name, 'w') as f:
-            json.dump(odds, f, indent=4)
+        # with open(self.debug_file_name, 'w') as f:
+        #     json.dump(odds, f, indent=4)
 
         race_good = self.filter.filter_odds(odds)
         if race_good:
             self.logger.info(f"bet on")
 
         # Remove the job after it runs or if the date has passed
-        job_key = f"{race_id}_{trigger_time}"
+        job_key = f"{race_id}_{meeting_name}_{trigger_time}"
         if job_key in self.current_jobs:
             schedule.cancel_job(self.current_jobs[job_key])
             del self.current_jobs[job_key]
