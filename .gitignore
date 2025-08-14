@@ -165,7 +165,7 @@ cython_debug/
 mongo_tab_data/
 
 output*/
-analysis/
+# analysis/
 
 trigger/filter.py
 Cookies
