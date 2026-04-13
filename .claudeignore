@@ -1,0 +1,51 @@
+# --- Dependencies ---
+node_modules/
+bower_components/
+.venv/
+env/
+venv/
+lib/
+
+# --- Build & Output ---
+dist/
+build/
+out/
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# --- Environment & Secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# --- Logs & Temp ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.tmp/
+.temp/
+
+# --- IDE & Editor Settings ---
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# --- Version Control ---
+.git/
+.svn/
+
+# --- Cache ---
+.cache/
+.parcel-cache/
+.eslintcache

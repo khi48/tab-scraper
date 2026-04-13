@@ -4,5 +4,9 @@
 !*.lock
 !*.toml
 !*cron*
-!*.env*
+!.env
 !trigger/*.py
+mongo_tab_data
+mongo_tab_data/**
+.git
+.venv

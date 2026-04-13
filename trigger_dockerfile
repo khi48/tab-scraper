@@ -2,7 +2,7 @@
 #docker run -d --name="schedule_trigger" schedule_trigger
 #docker rm schedule_trigger
 
-FROM python:3.12.6-slim-bookworm
+FROM python:3.13-slim
 
 # Python
 ENV PYTHONFAULTHANDLER=1 \
