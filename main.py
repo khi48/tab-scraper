@@ -17,15 +17,22 @@ import time
 import psutil
 import logging
 import time as timer
-from datetime import datetime, timedelta, date, time as time_class
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, List, Any
-from zoneinfo import ZoneInfo
 from tab_data_extractor import TabDataExtractor
 from mongodb_handler import MongoDBHandler
 
 DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
 DATE_FORMAT = '%Y-%m-%d'
-NZT = ZoneInfo("Pacific/Auckland")
+
+
+def now_utc() -> datetime:
+    """Naive UTC datetime — keeps comparisons consistent regardless of container TZ."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def today_utc_str() -> str:
+    return now_utc().strftime(DATE_FORMAT)
 
 # Memory thresholds (in MB)
 MEMORY_WARNING_THRESHOLD = 300  # 300MB - start warning
@@ -85,24 +92,23 @@ class MemoryMonitor:
         logger.info(f"Memory: {memory_mb:.1f}MB ({percent:.1f}% of system) | Peak: {self.peak_memory:.1f}MB | Cleanups: {self.cleanup_count}")
 
 
-def check_within_time_bounds(start_time, end_time):
-    current_time = datetime.now().time()
-    return start_time <= current_time <= end_time
-
-
 def convert_date_to_collection_format(date_string):
     return '_' + date_string.replace('-', '')
 
 
-def iso_utc_to_nzt_str(iso_str: str) -> str:
-    """Convert UTC ISO 8601 to naive NZT '%Y-%m-%d %H:%M:%S'."""
+def iso_utc_to_str(iso_str: str) -> str:
+    """Strip ISO 8601 Z suffix → naive UTC '%Y-%m-%d %H:%M:%S'.
+
+    Affiliates v1 publishes race start_time in UTC; storing UTC throughout
+    avoids tz drift since the container runs with TZ=UTC.
+    """
     dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-    return dt.astimezone(NZT).replace(tzinfo=None).strftime(DATETIME_FORMAT)
+    return dt.astimezone(timezone.utc).replace(tzinfo=None).strftime(DATETIME_FORMAT)
 
 
 def update_odds_data_local(data_extractor: TabDataExtractor, formatted_data: Dict[str, Any]) -> tuple:
     """For each race within ±5min of start time, fetch event endpoint and append odds snapshot."""
-    now = datetime.now()
+    now = now_utc()
     timestamp = now.strftime(DATETIME_FORMAT)
     need_update_schedule = False
 
@@ -158,7 +164,7 @@ def update_odds_data_local(data_extractor: TabDataExtractor, formatted_data: Dic
 
 def update_results_data_local(data_extractor: TabDataExtractor, formatted_data: Dict[str, Any]) -> Dict[str, Any]:
     """For each race past start time without results, fetch event and persist data.results[]."""
-    now = datetime.now()
+    now = now_utc()
 
     for _id, race in formatted_data.items():
         if race.get("got_results"):
@@ -258,7 +264,7 @@ def extract_schedule_data(schedule_data: Dict[str, Any]) -> Dict[str, Any]:
 
             start_iso = race.get("start_time")
             try:
-                norm_time = iso_utc_to_nzt_str(start_iso) if start_iso else None
+                norm_time = iso_utc_to_str(start_iso) if start_iso else None
             except (TypeError, ValueError):
                 norm_time = None
 
@@ -274,7 +280,7 @@ def extract_schedule_data(schedule_data: Dict[str, Any]) -> Dict[str, Any]:
                 "race_track": race.get("track_condition"),
                 "race_weather": race.get("weather"),
                 "got_results": False,
-                "time_schedule_pulled": datetime.now().strftime(DATETIME_FORMAT),
+                "time_schedule_pulled": now_utc().strftime(DATETIME_FORMAT),
                 "entries": {},
             }
 
@@ -332,7 +338,7 @@ def pull_tab_data_robust(memory_monitor: MemoryMonitor):
             logger.error("Failed to connect to MongoDB")
             return
 
-        collection_name = convert_date_to_collection_format(date.today().strftime(DATE_FORMAT))
+        collection_name = convert_date_to_collection_format(today_utc_str())
         logger.info(f"Current date: {collection_name}")
 
         if not mongodb.check_collection_in_db(collection_name):
@@ -350,7 +356,7 @@ def pull_tab_data_robust(memory_monitor: MemoryMonitor):
         else:
             logger.warning("Skipping odds update due to memory pressure")
 
-        now = datetime.now()
+        now = now_utc()
         if now.minute == 0 and 0 <= now.second <= 10:
             if status != 'critical':
                 logger.info("Updating results")
