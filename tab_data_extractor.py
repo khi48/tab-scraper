@@ -1,141 +1,55 @@
-# Here's a Python script that extracts JSON data from the specified URLs using the `requests` library:
-'''
-This script:
+"""TAB Affiliates v1 data extractor.
 
-1. Creates a `TabDataExtractor` class to handle the data extraction process.
-2. Uses the `requests` library to fetch JSON data from the specified URLs.
-3. Includes error handling for network requests and file operations.
-4. Saves the extracted data to a JSON file.
-5. Provides a summary of the extracted data.
+Migrated 2026-05-15 from legacy json.tab.co.nz endpoints (retired when Entain
+acquired TAB NZ and moved it onto the Neds platform). Source endpoints now
+live at https://api.tab.co.nz/affiliates/v1/ — public, unauthenticated, with a
+30-second cache.
+"""
 
-To use this script, you'll need to install the `requests` library first:
-
-```bash
-pip install requests
-```
-
-The script will:
-- Fetch data from all three endpoints
-- Save the combined data to a file named "tab_data.json"
-- Print a summary of the extracted data
-
-Features:
-- Error handling for network requests
-- Type hints for better code readability
-- Follows black formatting style
-- Modular design with separate methods for different functionalities
-- Easy to extend for additional endpoints
-
-The output JSON file will contain a dictionary with three keys ("schedule", "odds", "results"), each containing the respective JSON data from the endpoints.
-
-Note: Make sure you have proper permissions to access these URLs and comply with any terms of service or rate limiting requirements from the API provider.
-'''
-
-import requests
 import json
+import requests
 from typing import Dict, Optional
+
+USER_AGENT = "Mozilla/5.0"
+
 
 class TabDataExtractor:
     def __init__(self):
-        self.base_url = "https://json.tab.co.nz"
+        self.base_url = "https://api.tab.co.nz"
         self.endpoints = {
-            "schedule": "/schedule/",
-            "odds": "/odds/",
-            "results": "/results/",
+            "schedule": "/affiliates/v1/racing/meetings",
+            "event": "/affiliates/v1/racing/events/{race_id}",
         }
+        self._headers = {"User-Agent": USER_AGENT}
 
-    def fetch_json_data(self, url: str) -> Optional[Dict]:
-        """
-        Fetch JSON data from the specified URL.
-
-        Args:
-            url (str): The URL to fetch data from
-
-        Returns:
-            Optional[Dict]: JSON response data or None if request fails
-        """
+    def fetch_json_data(self, url: str, params: Optional[Dict] = None) -> Optional[Dict]:
+        """Fetch JSON from URL with User-Agent header. Returns None on error."""
         try:
-            response = requests.get(url)
+            response = requests.get(url, headers=self._headers, params=params, timeout=30)
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
             print(f"Error fetching data from {url}: {str(e)}")
             return None
 
-    def get_all_data(self) -> Dict[str, Optional[Dict]]:
-        """
-        Fetch data from all endpoints.
+    @staticmethod
+    def _unwrap(payload: Optional[Dict]) -> Optional[Dict]:
+        """Strip the Affiliates v1 envelope and return inner `data` dict."""
+        if payload is None:
+            return None
+        return payload.get("data")
 
-        Returns:
-            Dict[str, Optional[Dict]]: Dictionary containing data from all endpoints
-        """
-        data = {}
-        for endpoint_name, endpoint_path in self.endpoints.items():
-            url = self.base_url + endpoint_path
-            data[endpoint_name] = self.fetch_json_data(url)
-        return data
-    
-
-    def get_schedule_data(self) -> Dict[str, Optional[Dict]]:
-        """
-        Fetches on schedule endpoint data
-        
-        Returns:
-            Dict[str, Optional[Dict]]: Dictionary containing data from schedule endpoint
-        """
-        data = {}
+    def get_schedule_data(self, date: str = "today") -> Optional[Dict]:
+        """List all race meetings for `date` (default today). Returns dict with `meetings`."""
         url = self.base_url + self.endpoints["schedule"]
-        data = self.fetch_json_data(url)
-        return data
-    
-    def get_odds_data(self) -> Dict[str, Optional[Dict]]:
-        """
-        Fetches on odds endpoint data
-        
-        Returns:
-            Dict[str, Optional[Dict]]: Dictionary containing data from odds endpoint
-        """
-        data = {}
-        url = self.base_url + self.endpoints["odds"]
-        data = self.fetch_json_data(url)
-        return data
+        return self._unwrap(self.fetch_json_data(url, params={"date": date}))
 
-    def get_results_data(self) -> Dict[str, Optional[Dict]]:
-        """
-        Fetches on results endpoint data
-        
-        Returns:
-            Dict[str, Optional[Dict]]: Dictionary containing data from results endpoint
-        """
-        data = {}
-        url = self.base_url + self.endpoints["results"]
-        data = self.fetch_json_data(url)
-        return data
-    
-    def combine_data(self, data: Dict[str, Optional[Dict]]) -> Dict[str, Optional[Dict]]:
-        """
-        Combine data from all endpoints into a single dictionary.
+    def get_event_data(self, race_id: str) -> Optional[Dict]:
+        """Fetch a single race event (runners + odds + results)."""
+        url = self.base_url + self.endpoints["event"].format(race_id=race_id)
+        return self._unwrap(self.fetch_json_data(url))
 
-        Args:
-            data (Dict[str, Optional[Dict]]): Data to combine
-
-        Returns:
-            Dict: Combined data
-        """
-        combined_data = {}
-        for endpoint_name, endpoint_data in data.items():
-            if endpoint_data is not None:
-                combined_data[endpoint_name] = endpoint_data
-        return combined_data
-
-    def save_to_file(self, data: Dict[str, Optional[Dict]], filename: str) -> None:
-        """
-        Save the extracted data to a JSON file.
-
-        Args:
-            data (Dict[str, Optional[Dict]]): Data to save
-            filename (str): Name of the output file
-        """
+    def save_to_file(self, data: Dict, filename: str) -> None:
         try:
             with open(filename, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4)
@@ -143,25 +57,19 @@ class TabDataExtractor:
         except IOError as e:
             print(f"Error saving data to file: {str(e)}")
 
+
 def main():
-    # Create an instance of TabDataExtractor
     extractor = TabDataExtractor()
-
-    # Fetch data from all endpoints
-    print("Fetching data from endpoints...")
-    data = extractor.get_all_data()
-
-    # Save the data to a JSON file
-    output_file = "tab_data.json"
-    extractor.save_to_file(data, output_file)
-
-    # Print summary of extracted data
-    for endpoint, endpoint_data in data.items():
-        if endpoint_data is not None:
-            print(f"\nData retrieved from {endpoint} endpoint:")
-            print(f"Number of items: {len(endpoint_data)}")
-        else:
-            print(f"\nFailed to retrieve data from {endpoint} endpoint")
+    schedule = extractor.get_schedule_data()
+    if schedule is None:
+        print("Schedule fetch failed")
+        return
+    meetings = schedule.get("meetings", [])
+    print(f"Meetings today: {len(meetings)}")
+    if meetings and meetings[0].get("races"):
+        race_id = meetings[0]["races"][0]["id"]
+        event = extractor.get_event_data(race_id)
+        print(f"Event runners: {len(event.get('runners', [])) if event else 'n/a'}")
 
 
 if __name__ == "__main__":
